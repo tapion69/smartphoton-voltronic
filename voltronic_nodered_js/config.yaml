@@ -1,9 +1,9 @@
 name: Voltronic + Node-RED (Serial, Plug&Play)
-version: "0.4.0"
+version: "0.4.1"
 slug: voltronic_nodered_serial
 description: >
   Node-RED intégré. Lecture Voltronic via ports série directement dans Node-RED
-  (QPIGS + QPIGS2) et publication MQTT + MQTT Discovery Home Assistant.
+  (QPIGS + QPIGS2) et publication MQTT. Configuration plug & play via l’UI de l’add-on.
 
 arch:
   - amd64
@@ -20,7 +20,7 @@ ingress: true
 ingress_port: 1880
 panel_icon: mdi:solar-power
 
-# Optionnel: accès direct IP:1880 (dev)
+# Accès direct (dev) : http://IP_HA:1880
 ports:
   1880/tcp: 1880
 ports_description:
@@ -29,6 +29,9 @@ ports_description:
 uart: true
 usb: true
 
+services:
+  - mqtt:need
+
 options:
   mqtt_host: core-mosquitto
   mqtt_port: 1883
@@ -36,21 +39,20 @@ options:
   mqtt_password: ""
   mqtt_topic_prefix: voltronic
   poll_interval_s: 5
-  connect_timeout_s: 3
   reset_flows: false
 
   inverters:
     - name: inv1
       enabled: true
-      port: /dev/ttyUSB0
+      port: /dev/serial/by-id/CHANGE-ME
       baudrate: 2400
     - name: inv2
       enabled: false
-      port: /dev/ttyUSB1
+      port: /dev/serial/by-id/CHANGE-ME
       baudrate: 2400
     - name: inv3
       enabled: false
-      port: /dev/ttyUSB2
+      port: /dev/serial/by-id/CHANGE-ME
       baudrate: 2400
 
 schema:
@@ -60,7 +62,6 @@ schema:
   mqtt_password: password
   mqtt_topic_prefix: str
   poll_interval_s: int
-  connect_timeout_s: int
   reset_flows: bool
 
   inverters:
@@ -69,10 +70,6 @@ schema:
       port: str
       baudrate: int
 
-services:
-  - mqtt:need
-
-devices:
-  - /dev/ttyUSB0
-  - /dev/ttyUSB1
-  - /dev/ttyUSB2
+# On laisse HA exposer les devices USB/serial automatiquement (usb: true / uart: true)
+# Ne pas figer /dev/ttyUSBx ici pour éviter les problèmes selon le matériel.
+devices: []
