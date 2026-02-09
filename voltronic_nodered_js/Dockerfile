@@ -1,4 +1,5 @@
-FROM ghcr.io/home-assistant/addons/node-red:latest
+ARG BUILD_ARCH
+FROM ghcr.io/home-assistant/${BUILD_ARCH}-addon-node-red:latest
 
 COPY rootfs /
 COPY voltronic /opt/voltronic
