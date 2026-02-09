@@ -1,109 +1,116 @@
-#!/usr/bin/with-contenv bashio
-set -e
+[
+  { "id": "tab_voltronic", "type": "tab", "label": "Voltronic Serial", "disabled": false, "info": "" },
 
-DATA_DIR="/data/node-red"
-FLOW="${DATA_DIR}/flows-voltronic.json"
-TEMPLATE="/etc/node-red/flows-template.json"
+  {
+    "id": "mqtt_broker_voltronic",
+    "type": "mqtt-broker",
+    "name": "MQTT (auto)",
+    "broker": "__MQTT_HOST__",
+    "port": "__MQTT_PORT__",
+    "clientid": "nodered-voltronic",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true
+  },
 
-mkdir -p "$DATA_DIR"
+  {
+    "id": "fn_crc_frame",
+    "type": "function",
+    "z": "tab_voltronic",
+    "name": "CRC16/XMODEM + Frame",
+    "func": "function crc16Xmodem(buf){let crc=0x0000;for(const b of buf){crc^=(b<<8);for(let i=0;i<8;i++){crc=(crc&0x8000)?(((crc<<1)&0xffff)^0x1021):((crc<<1)&0xffff);}}return crc&0xffff;}\nmsg.cmd = msg.cmd || \"\";\nconst payload = Buffer.from(msg.cmd, 'ascii');\nconst crc = crc16Xmodem(payload);\nconst crcBuf = Buffer.alloc(2);\ncrcBuf.writeUInt16BE(crc,0);\nmsg.payload = Buffer.concat([payload, crcBuf, Buffer.from('\\r','ascii')]);\nreturn msg;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 240,
+    "y": 80,
+    "wires": []
+  },
 
-RESET="$(bashio::config 'reset_flows')"
+  {
+    "id": "fn_parse_line",
+    "type": "function",
+    "z": "tab_voltronic",
+    "name": "Parse line '(...)'",
+    "func": "let s = msg.payload;\nif (Buffer.isBuffer(s)) s = s.toString('ascii');\ns = (s||\"\").trim();\nif (s.startsWith('(')) s = s.slice(1);\ns = s.replace(/\\r/g,'').trim();\nmsg.line = s;\nreturn msg;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 260,
+    "y": 140,
+    "wires": []
+  },
 
-# 1) Si pas de flow ou reset => seed depuis template
-if [ "$RESET" = "true" ] || [ ! -f "$FLOW" ]; then
-  echo "[voltronic] Seeding default flow from template..."
-  cp -f "$TEMPLATE" "$FLOW"
-fi
+  {
+    "id": "fn_merge_payload",
+    "type": "function",
+    "z": "tab_voltronic",
+    "name": "Merge QPIGS/QPIGS2 + publish state",
+    "func": "const inv = msg.inv || 'inv';\nconst store = context.get('store') || {};\nstore[inv] = store[inv] || {};\n\nif (msg.kind === 'QPIGS') {\n  store[inv].qpigs = msg.line;\n}\nif (msg.kind === 'QPIGS2') {\n  if ((msg.line||'').includes('NAK')) store[inv].qpigs2 = null;\n  else store[inv].qpigs2 = msg.line;\n}\ncontext.set('store', store);\n\nconst qpigs = store[inv].qpigs;\nif (!qpigs) return null;\n\nfunction f(x){const v=parseFloat(x);return Number.isFinite(v)?v:null;}\nfunction i(x){const v=parseInt(String(x),10);return Number.isFinite(v)?v:null;}\n\nconst fields = qpigs.split(/\\s+/).filter(Boolean);\nconst payload = { inverter: inv, timestamp: new Date().toISOString() };\n\npayload.grid_v = f(fields[0]);\npayload.grid_hz = f(fields[1]);\npayload.ac_out_v = f(fields[2]);\npayload.ac_out_hz = f(fields[3]);\npayload.apparent_power_va = i(fields[4]);\npayload.active_power_w = i(fields[5]);\npayload.load_pct = i(fields[6]);\npayload.bus_v = i(fields[7]);\npayload.battery_v = f(fields[8]);\npayload.battery_charge_a = i(fields[9]);\npayload.battery_capacity_pct = i(fields[10]);\npayload.heatsink_c = i(fields[11]);\npayload.pv_input_a = i(fields[12]);\npayload.pv_input_v = f(fields[13]);\nif (typeof payload.pv_input_v==='number' && typeof payload.pv_input_a==='number') payload.pv_w_est = Math.round(payload.pv_input_v*payload.pv_input_a*10)/10;\n\nconst qpigs2 = store[inv].qpigs2;\nif (qpigs2) {\n  const f2 = qpigs2.split(/\\s+/).filter(Boolean);\n  payload.pv2_input_a = f(f2[0]);\n  payload.pv2_input_v = f(f2[1]);\n  const p2 = f(f2[2]);\n  payload.pv2_w = Number.isFinite(p2)?p2:null;\n  if (payload.pv2_w==null && typeof payload.pv2_input_v==='number' && typeof payload.pv2_input_a==='number') payload.pv2_w_est = Math.round(payload.pv2_input_v*payload.pv2_input_a*10)/10;\n}\n\nconst pv1 = payload.pv_w_est;\nconst pv2 = payload.pv2_w ?? payload.pv2_w_est;\nif (typeof pv1==='number' || typeof pv2==='number') payload.pv_total_w = Math.round(((pv1||0)+(pv2||0))*10)/10;\n\nmsg.topic = '__PREFIX__/' + inv + '/state';\nmsg.payload = JSON.stringify(payload);\nreturn msg;\n",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "context.set('store', {});\n",
+    "finalize": "",
+    "libs": [],
+    "x": 520,
+    "y": 360,
+    "wires": [["mqtt_out_state"]]
+  },
 
-# 2) Patch SAFE du flow (sans écraser les nodes)
-export MQTT_HOST="$(bashio::config 'mqtt_host')"
-export MQTT_PORT="$(bashio::config 'mqtt_port')"
-export MQTT_USER="$(bashio::config 'mqtt_username')"
-export MQTT_PASS="$(bashio::config 'mqtt_password')"
-export POLL_S="$(bashio::config 'poll_interval_s')"
+  {
+    "id": "mqtt_out_state",
+    "type": "mqtt out",
+    "z": "tab_voltronic",
+    "name": "MQTT state",
+    "topic": "",
+    "qos": "",
+    "retain": "",
+    "broker": "mqtt_broker_voltronic",
+    "x": 760,
+    "y": 360,
+    "wires": []
+  },
 
-[ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
-[ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
-[ -z "$POLL_S" ] && POLL_S="5"
+  {
+    "id": "fn_prefix_replace",
+    "type": "function",
+    "z": "tab_voltronic",
+    "name": "Set prefix",
+    "func": "msg.topic = (msg.topic||'').replace('__PREFIX__','voltronic');\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 540,
+    "y": 420,
+    "wires": [["mqtt_out_state"]]
+  },
 
-export INV1_PORT="$(bashio::config 'inverters[0].port')"
-export INV1_BAUD="$(bashio::config 'inverters[0].baudrate')"
-export INV1_EN="$(bashio::config 'inverters[0].enabled')"
+  { "id": "inj_inv1", "type": "inject", "z": "tab_voltronic", "name": "inv1 poll", "props": [{"p":"payload"},{"p":"topic","vt":"str"}], "repeat": "__POLL_S__", "once": true, "onceDelay": 2, "topic": "", "payload": "", "payloadType": "date", "x": 120, "y": 220, "wires": [["sw_inv1_enabled"]] },
+  { "id": "sw_inv1_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv1 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 330, "y": 220, "wires": [["ch_inv1_qpigs","ch_inv1_qpigs2"]] },
+  { "id": "ch_inv1_qpigs", "type": "change", "z": "tab_voltronic", "name": "QPIGS inv1", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv1","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV1_EN__","tot":"bool"}], "x": 160, "y": 280, "wires": [["fn_crc_frame","sr_inv1"]] },
+  { "id": "ch_inv1_qpigs2", "type": "change", "z": "tab_voltronic", "name": "QPIGS2 inv1", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv1","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV1_EN__","tot":"bool"}], "x": 170, "y": 320, "wires": [["fn_crc_frame","sr_inv1"]] },
+  { "id": "sr_inv1", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv1", "serial": "ser_inv1", "x": 470, "y": 300, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
+  { "id": "ser_inv1", "type": "serial-port", "serialport": "__INV1_PORT__", "serialbaud": "__INV1_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" },
 
-export INV2_PORT="$(bashio::config 'inverters[1].port')"
-export INV2_BAUD="$(bashio::config 'inverters[1].baudrate')"
-export INV2_EN="$(bashio::config 'inverters[1].enabled')"
+  { "id": "inj_inv2", "type": "inject", "z": "tab_voltronic", "name": "inv2 poll", "props": [{"p":"payload"},{"p":"topic","vt":"str"}], "repeat": "__POLL_S__", "once": true, "onceDelay": 3, "topic": "", "payload": "", "payloadType": "date", "x": 120, "y": 520, "wires": [["sw_inv2_enabled"]] },
+  { "id": "sw_inv2_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv2 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 330, "y": 520, "wires": [["ch_inv2_qpigs","ch_inv2_qpigs2"]] },
+  { "id": "ch_inv2_qpigs", "type": "change", "z": "tab_voltronic", "name": "QPIGS inv2", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv2","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV2_EN__","tot":"bool"}], "x": 160, "y": 580, "wires": [["fn_crc_frame","sr_inv2"]] },
+  { "id": "ch_inv2_qpigs2", "type": "change", "z": "tab_voltronic", "name": "QPIGS2 inv2", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv2","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV2_EN__","tot":"bool"}], "x": 170, "y": 620, "wires": [["fn_crc_frame","sr_inv2"]] },
+  { "id": "sr_inv2", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv2", "serial": "ser_inv2", "x": 470, "y": 600, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
+  { "id": "ser_inv2", "type": "serial-port", "serialport": "__INV2_PORT__", "serialbaud": "__INV2_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" },
 
-export INV3_PORT="$(bashio::config 'inverters[2].port')"
-export INV3_BAUD="$(bashio::config 'inverters[2].baudrate')"
-export INV3_EN="$(bashio::config 'inverters[2].enabled')"
-
-node <<'NODE'
-const fs = require("fs");
-
-const flowPath = "/data/node-red/flows-voltronic.json";
-const flow = JSON.parse(fs.readFileSync(flowPath, "utf8"));
-
-function setById(id, updater) {
-  const n = flow.find(x => x && x.id === id);
-  if (!n) return false;
-  updater(n);
-  return true;
-}
-
-// Patch MQTT broker config-node
-setById("mqtt_broker_voltronic", (n) => {
-  n.broker = process.env.MQTT_HOST || "core-mosquitto";
-  n.port = String(process.env.MQTT_PORT || "1883");
-  // laisse user/pass au cred file Node-RED si tu veux,
-  // ou via mqtt-broker props selon version.
-});
-
-// Patch serial config-nodes
-function patchSerial(id, port, baud) {
-  return setById(id, (n) => {
-    n.serialport = port || n.serialport;
-    n.serialbaud = String(baud || n.serialbaud || "2400");
-    n.databits = n.databits || "8";
-    n.parity = n.parity || "none";
-    n.stopbits = n.stopbits || "1";
-    n.newline = n.newline || "\\r";
-  });
-}
-
-patchSerial("ser_inv1", process.env.INV1_PORT, process.env.INV1_BAUD);
-patchSerial("ser_inv2", process.env.INV2_PORT, process.env.INV2_BAUD);
-patchSerial("ser_inv3", process.env.INV3_PORT, process.env.INV3_BAUD);
-
-// Patch poll interval inject nodes (optionnel)
-function patchInject(id) {
-  setById(id, (n) => {
-    n.repeat = String(process.env.POLL_S || "5");
-  });
-}
-patchInject("inj_inv1");
-patchInject("inj_inv2");
-patchInject("inj_inv3");
-
-// Patch enabled switch via msg.enabled (si tu utilises ce pattern)
-function patchEnabledChangeNode(id, enabled) {
-  // si tu as des Change nodes qui posent msg.enabled
-  setById(id, (n) => {
-    if (!Array.isArray(n.rules)) return;
-    for (const r of n.rules) {
-      if (r && r.t === "set" && r.p === "enabled") {
-        r.to = String(enabled === "true" ? true : enabled);
-        r.tot = "bool";
-      }
-    }
-  });
-}
-// Exemple si ton flow a des change nodes id "ch_inv1_enabled" etc.
-// patchEnabledChangeNode("ch_inv1_enabled", process.env.INV1_EN);
-
-fs.writeFileSync(flowPath, JSON.stringify(flow, null, 2));
-console.log("[voltronic] Patched flow config nodes (mqtt/serial/poll).");
-NODE
-
-chmod 644 "$FLOW" || true
-echo "[voltronic] Flow ready: $FLOW"
+  { "id": "inj_inv3", "type": "inject", "z": "tab_voltronic", "name": "inv3 poll", "props": [{"p":"payload"},{"p":"topic","vt":"str"}], "repeat": "__POLL_S__", "once": true, "onceDelay": 4, "topic": "", "payload": "", "payloadType": "date", "x": 120, "y": 820, "wires": [["sw_inv3_enabled"]] },
+  { "id": "sw_inv3_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv3 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 330, "y": 820, "wires": [["ch_inv3_qpigs","ch_inv3_qpigs2"]] },
+  { "id": "ch_inv3_qpigs", "type": "change", "z": "tab_voltronic", "name": "QPIGS inv3", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv3","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV3_EN__","tot":"bool"}], "x": 160, "y": 880, "wires": [["fn_crc_frame","sr_inv3"]] },
+  { "id": "ch_inv3_qpigs2", "type": "change", "z": "tab_voltronic", "name": "QPIGS2 inv3", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv3","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV3_EN__","tot":"bool"}], "x": 170, "y": 920, "wires": [["fn_crc_frame","sr_inv3"]] },
+  { "id": "sr_inv3", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv3", "serial": "ser_inv3", "x": 470, "y": 900, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
+  { "id": "ser_inv3", "type": "serial-port", "serialport": "__INV3_PORT__", "serialbaud": "__INV3_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" }
+]
