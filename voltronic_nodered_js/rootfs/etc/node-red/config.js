@@ -4,10 +4,11 @@ module.exports = {
   userDir: "/data/node-red",
   flowFile: "flows-voltronic.json",
 
-  adminAuth: null,
+  // Important : désactive le chiffrement des credentials
+  // (sinon Node-RED attend un fichier chiffré et affiche "Encrypted credentials not found")
+  credentialSecret: "",
 
-  // (optionnel) éviter le warning de credentials
-  credentialSecret: process.env.CREDENTIAL_SECRET || "voltronic-default-change-me",
+  adminAuth: null,
 
   logging: {
     console: { level: "info", metrics: false, audit: false },
