@@ -1,5 +1,5 @@
 ARG BUILD_ARCH=amd64
-FROM ghcr.io/hassio-addons/node-red/${BUILD_ARCH}:latest
+FROM ghcr.io/hassio-addons/node-red/${BUILD_ARCH}:edge
 
 COPY rootfs /
 COPY voltronic /opt/voltronic
