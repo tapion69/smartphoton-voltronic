@@ -1,5 +1,5 @@
 name: "Voltronic + Node-RED (JS, Plug&Play)"
-version: "0.3.2"
+version: "0.3.3"
 slug: "voltronic_nodered_js"
 description: "Node-RED intégré + Voltronic (série) → MQTT, en JavaScript"
 url: "https://github.com/TONUSER/TONREPO"
@@ -13,6 +13,7 @@ build_from:
   amd64: ghcr.io/hassio-addons/node-red/amd64:latest
   aarch64: ghcr.io/hassio-addons/node-red/aarch64:latest
   armv7: ghcr.io/hassio-addons/node-red/armv7:latest
+
 
 startup: services
 boot: auto
