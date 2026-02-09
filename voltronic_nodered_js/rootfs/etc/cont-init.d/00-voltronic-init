@@ -9,20 +9,22 @@ CREDS_FILE="${DATA_DIR}/flows-voltronic_cred.json"
 
 mkdir -p "${DATA_DIR}"
 
-# Récupération config add-on
+# =========================
+# Lecture config add-on
+# =========================
 MQTT_HOST="$(bashio::config 'mqtt_host')"
 MQTT_PORT="$(bashio::config 'mqtt_port')"
 MQTT_USER="$(bashio::config 'mqtt_username')"
 MQTT_PASS="$(bashio::config 'mqtt_password')"
 
-# Valeurs par défaut
+# Defaults
 [ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
 [ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
 
 echo "[voltronic] MQTT → ${MQTT_HOST}:${MQTT_PORT} (user: ${MQTT_USER:-none})"
 
 # =========================
-# FLOW COMPLET (tab + mqtt in + json + debug)
+# Flow complet
 # =========================
 cat > "$FLOWS_FILE" <<EOF
 [
@@ -104,9 +106,10 @@ cat > "$FLOWS_FILE" <<EOF
 EOF
 
 # =========================
-# CREDENTIALS MQTT
+# Credentials (toujours présent)
 # =========================
-cat > "$CREDS_FILE" <<EOF
+if [ -n "$MQTT_USER" ] || [ -n "$MQTT_PASS" ]; then
+  cat > "$CREDS_FILE" <<EOF
 {
   "mqtt_broker_voltronic": {
     "user": "$MQTT_USER",
@@ -114,12 +117,17 @@ cat > "$CREDS_FILE" <<EOF
   }
 }
 EOF
+else
+  echo "{}" > "$CREDS_FILE"
+fi
+
+# Permissions
+chown -R node-red:node-red "$DATA_DIR" || true
 
 echo "[voltronic] Wrote:"
 echo " - $FLOWS_FILE"
 echo " - $CREDS_FILE"
-
-chown -R node-red:node-red "$DATA_DIR" || true
-
 echo "[voltronic] Listing $DATA_DIR"
 ls -la "$DATA_DIR" || true
+
+echo "[voltronic] Init complete"
