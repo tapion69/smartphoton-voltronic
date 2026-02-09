@@ -10,9 +10,9 @@ arch:
   - armv7
 
 build_from:
-  amd64: ghcr.io/hassio-addons/node-red/amd64:latest
-  aarch64: ghcr.io/hassio-addons/node-red/aarch64:latest
-  armv7: ghcr.io/hassio-addons/node-red/armv7:latest
+  amd64: ghcr.io/home-assistant/amd64-addon-node-red:latest
+  aarch64: ghcr.io/home-assistant/aarch64-addon-node-red:latest
+  armv7: ghcr.io/home-assistant/armv7-addon-node-red:latest
 
 
 startup: services
