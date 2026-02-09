@@ -3,8 +3,23 @@ set -e
 
 mkdir -p /data/node-red
 
-# Installe le flow par défaut seulement si l'utilisateur n'a pas déjà un flow
-if [ ! -f /data/node-red/flows.json ]; then
-  echo "[voltronic] Installing default Node-RED flows..."
-  cp -f /etc/node-red/flows.json /data/node-red/flows.json
-fi
+# Lit /data/options.json via node (pas besoin de jq)
+MQTT_HOST="$(node -p "require('/data/options.json').mqtt_host || 'core-mosquitto'")"
+MQTT_PORT="$(node -p "String(require('/data/options.json').mqtt_port || 1883)")"
+MQTT_USER="$(node -p "String(require('/data/options.json').mqtt_username || '')")"
+MQTT_PASS="$(node -p "String(require('/data/options.json').mqtt_password || '')")"
+
+echo "[voltronic] Generating Node-RED flow with MQTT=${MQTT_HOST}:${MQTT_PORT}"
+
+TEMPLATE="/etc/node-red/flows-template.json"
+OUT="/data/node-red/flows-voltronic.json"
+
+cp -f "${TEMPLATE}" "${OUT}"
+
+# Remplacements (échappement simple des caractères spéciaux)
+esc() { printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'; }
+
+sed -i "s/__MQTT_HOST__/$(esc "${MQTT_HOST}")/g" "${OUT}"
+sed -i "s/__MQTT_PORT__/$(esc "${MQTT_PORT}")/g" "${OUT}"
+sed -i "s/__MQTT_USER__/$(esc "${MQTT_USER}")/g" "${OUT}"
+sed -i "s/__MQTT_PASS__/$(esc "${MQTT_PASS}")/g" "${OUT}"
