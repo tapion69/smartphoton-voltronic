@@ -9,11 +9,13 @@ CREDS_FILE="${DATA_DIR}/flows-voltronic_cred.json"
 
 mkdir -p "${DATA_DIR}"
 
+# Lecture config add-on
 MQTT_HOST="$(bashio::config 'mqtt_host')"
 MQTT_PORT="$(bashio::config 'mqtt_port')"
 MQTT_USER="$(bashio::config 'mqtt_username')"
 MQTT_PASS="$(bashio::config 'mqtt_password')"
 
+# Defaults
 [ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
 [ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
 
@@ -22,42 +24,111 @@ echo "[voltronic] MQTT → ${MQTT_HOST}:${MQTT_PORT} (user: ${MQTT_USER:-none})"
 # Force reset (évite caches/vieux fichiers)
 rm -f "${FLOWS_FILE}" "${CREDS_FILE}"
 
+# =========================
 # Flow complet
+# =========================
 cat > "$FLOWS_FILE" <<EOF
 [
-  { "id":"tab_voltronic","type":"tab","label":"Voltronic","disabled":false,"info":"Auto flow" },
   {
-    "id":"mqtt_broker_voltronic","type":"mqtt-broker","name":"MQTT (auto)",
-    "broker":"$MQTT_HOST","port":"$MQTT_PORT","clientid":"nodered-voltronic",
-    "autoConnect":true,"usetls":false,"protocolVersion":"4","keepalive":"60",
-    "cleansession":true,"birthTopic":"","birthQos":"0","birthPayload":"",
-    "closeTopic":"","closeQos":"0","closePayload":"","willTopic":"","willQos":"0",
-    "willPayload":"","sessionExpiry":""
+    "id": "tab_voltronic",
+    "type": "tab",
+    "label": "Voltronic",
+    "disabled": false,
+    "info": "Auto flow (MQTT auto-config via add-on options)"
   },
   {
-    "id":"mqtt_in_state","type":"mqtt in","z":"tab_voltronic","name":"voltronic/+/state",
-    "topic":"voltronic/+/state","qos":"0","datatype":"auto","broker":"mqtt_broker_voltronic",
-    "nl":false,"rap":true,"rh":0,"inputs":0,"x":180,"y":120,"wires":[["json_parse"]]
+    "id": "mqtt_broker_voltronic",
+    "type": "mqtt-broker",
+    "name": "MQTT (auto)",
+    "broker": "$MQTT_HOST",
+    "port": "$MQTT_PORT",
+    "clientid": "nodered-voltronic",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "sessionExpiry": ""
   },
-  { "id":"json_parse","type":"json","z":"tab_voltronic","name":"Parse JSON","property":"payload","action":"","pretty":false,"x":390,"y":120,"wires":[["debug_payload"]] },
-  { "id":"debug_payload","type":"debug","z":"tab_voltronic","name":"Voltronic payload","active":true,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","x":620,"y":120,"wires":[] }
+  {
+    "id": "mqtt_in_state",
+    "type": "mqtt in",
+    "z": "tab_voltronic",
+    "name": "voltronic/+/state",
+    "topic": "voltronic/+/state",
+    "qos": "0",
+    "datatype": "auto",
+    "broker": "mqtt_broker_voltronic",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 180,
+    "y": 120,
+    "wires": [["json_parse"]]
+  },
+  {
+    "id": "json_parse",
+    "type": "json",
+    "z": "tab_voltronic",
+    "name": "Parse JSON",
+    "property": "payload",
+    "action": "",
+    "pretty": false,
+    "x": 390,
+    "y": 120,
+    "wires": [["debug_payload"]]
+  },
+  {
+    "id": "debug_payload",
+    "type": "debug",
+    "z": "tab_voltronic",
+    "name": "Voltronic payload",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 620,
+    "y": 120,
+    "wires": []
+  }
 ]
 EOF
 
-# Credentials: toujours créer le fichier (même vide)
+# =========================
+# Credentials (toujours présent)
+# =========================
 if [ -n "$MQTT_USER" ] || [ -n "$MQTT_PASS" ]; then
   cat > "$CREDS_FILE" <<EOF
 {
-  "mqtt_broker_voltronic": { "user": "$MQTT_USER", "password": "$MQTT_PASS" }
+  "mqtt_broker_voltronic": {
+    "user": "$MQTT_USER",
+    "password": "$MQTT_PASS"
+  }
 }
 EOF
 else
   echo "{}" > "$CREDS_FILE"
 fi
 
-chown -R node-red:node-red "$DATA_DIR" || true
+# Permissions safe (root)
+chmod 644 "$FLOWS_FILE" "$CREDS_FILE" || true
 
-echo "[voltronic] Files written:"
+echo "[voltronic] Wrote:"
+echo " - $FLOWS_FILE"
+echo " - $CREDS_FILE"
+echo "[voltronic] Listing $DATA_DIR"
 ls -la "$DATA_DIR" || true
-echo "[voltronic] creds file size:"
-wc -c "$CREDS_FILE" || true
+
+echo "[voltronic] Init complete"
