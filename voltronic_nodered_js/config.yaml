@@ -1,69 +1,81 @@
-name: "Voltronic + Node-RED (JS, Plug&Play)"
-version: "0.3.8"
-slug: "voltronic_nodered_js"
-description: "Node-RED intégré + Voltronic (série) → MQTT, en JavaScript"
-url: "https://github.com/tapion69/smartphoton-voltronic"
+name: Voltronic + Node-RED (JS, Plug&Play)
+version: "0.3.9"
+slug: voltronic_nodered_js
+description: >
+  Node-RED intégré + lecture onduleur Voltronic (série) en JavaScript
+  et publication MQTT automatique vers Home Assistant (Discovery).
 
 arch:
   - amd64
   - aarch64
   - armv7
+  - armhf
+  - i386
 
 startup: services
 boot: auto
 init: false
 
 ingress: true
-ingress_port: 0
+ingress_port: 1880
+panel_icon: mdi:solar-power
 
-ports:
-  1880/tcp: 1880
+ports: {}
+ports_description: {}
 
-panel_icon: "mdi:router-wireless"
+map:
+  - config:rw
+  - addons:rw
+  - share:rw
 
 uart: true
-devices:
-  - /dev/ttyUSB0
-  - /dev/ttyUSB1
-  - /dev/ttyUSB2
-  - /dev/serial/by-id
+usb: true
 
 options:
-  mqtt_host: "core-mosquitto"
+  mqtt_host: core-mosquitto
   mqtt_port: 1883
   mqtt_username: ""
   mqtt_password: ""
-  mqtt_tls: false
-  mqtt_topic_prefix: "voltronic"
-
+  mqtt_topic_prefix: voltronic
   poll_interval_s: 5
   connect_timeout_s: 3
+  reset_flows: false
 
   inverters:
-    - name: "inv1"
-      port: "/dev/ttyUSB0"
-      baudrate: 2400
+    - name: inv1
       enabled: true
-    - name: "inv2"
-      port: "/dev/ttyUSB1"
+      port: /dev/ttyUSB0
       baudrate: 2400
+    - name: inv2
       enabled: false
-    - name: "inv3"
-      port: "/dev/ttyUSB2"
+      port: /dev/ttyUSB1
       baudrate: 2400
+    - name: inv3
       enabled: false
+      port: /dev/ttyUSB2
+      baudrate: 2400
 
 schema:
   mqtt_host: str
   mqtt_port: int
-  mqtt_username: str?
-  mqtt_password: password?
-  mqtt_tls: bool
+  mqtt_username: str
+  mqtt_password: password
   mqtt_topic_prefix: str
   poll_interval_s: int
   connect_timeout_s: int
+  reset_flows: bool
+
   inverters:
     - name: str
+      enabled: bool
       port: str
       baudrate: int
-      enabled: bool
+
+services:
+  - mqtt:need
+
+devices:
+  - /dev/ttyUSB0
+  - /dev/ttyUSB1
+  - /dev/ttyUSB2
+
