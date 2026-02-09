@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env node
 import fs from "node:fs";
 
@@ -11,6 +10,9 @@ import { SerialPort } from "serialport";
 const CONFIG_PATH = "/data/options.json";
 
 function loadConfig() {
+  if (!fs.existsSync(CONFIG_PATH)) {
+    throw new Error(`Config file not found: ${CONFIG_PATH}`);
+  }
   const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
   return JSON.parse(raw);
 }
@@ -191,13 +193,16 @@ async function runInverter(invCfg, globalCfg, mqttClient) {
         }
 
         mqttClient.publish(topic(prefix, invCfg.name, "state"), JSON.stringify(payload), { retain: false, qos: 0 });
-
         await sleep(pollS * 1000);
       }
     } catch (e) {
       try {
         mqttClient.publish(topic(prefix, invCfg.name, "availability"), "offline", { retain: true, qos: 0 });
-        mqttClient.publish(topic(prefix, invCfg.name, "last_error"), JSON.stringify({ error: String(e), ts: Date.now() }), { retain: true, qos: 0 });
+        mqttClient.publish(
+          topic(prefix, invCfg.name, "last_error"),
+          JSON.stringify({ error: String(e), ts: Date.now() }),
+          { retain: true, qos: 0 }
+        );
       } catch {}
       await sleep(3000);
     } finally {
@@ -210,10 +215,10 @@ async function main() {
   const cfg = loadConfig();
 
   const host = cfg.mqtt_host || "core-mosquitto";
-  const port = Number(cfg.mqtt_port ?? 1883);
+  const mqttPort = Number(cfg.mqtt_port ?? 1883);
   const prefix = (cfg.mqtt_topic_prefix || "voltronic").replace(/\/+$/, "");
 
-  const url = `mqtt://${host}:${port}`;
+  const url = `mqtt://${host}:${mqttPort}`;
 
   const mqttOpts = {
     clientId: "voltronic-nodered-js-addon",
@@ -247,12 +252,15 @@ async function main() {
   }
 
   // Keep alive forever
-  // eslint-disable-next-line no-constant-condition
   while (true) await sleep(60_000);
 }
 
 main().catch((e) => {
   // eslint-disable-next-line no-console
+  console.error("Fatal:", e);
+  process.exit(1);
+});
+
   console.error("Fatal:", e);
   process.exit(1);
 });
