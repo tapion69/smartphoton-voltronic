@@ -15,6 +15,10 @@ init: false
 
 ingress: true
 ingress_port: 0
+
+ports:
+  1880/tcp: 1880
+
 panel_icon: "mdi:router-wireless"
 
 uart: true
