@@ -1,5 +1,5 @@
 name: Voltronic + Node-RED (JS, Plug&Play)
-version: "0.3.9"
+version: "0.4.0"
 slug: voltronic_nodered_js
 description: >
   Node-RED intégré + lecture onduleur Voltronic (série) en JavaScript
