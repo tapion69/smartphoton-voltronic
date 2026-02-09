@@ -16,7 +16,7 @@ startup: services
 boot: auto
 init: false
 
-ingress: true
+ingress: false
 ingress_port: 1880
 panel_icon: mdi:solar-power
 
