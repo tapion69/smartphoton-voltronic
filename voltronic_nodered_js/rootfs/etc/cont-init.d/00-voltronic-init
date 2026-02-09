@@ -151,9 +151,19 @@ function setPrefixFn(){
 
 setMqtt();
 
-setSerial("ser_inv1", process.env.INV1_PORT, process.env.INV1_BAUD);
-setSerial("ser_inv2", process.env.INV2_PORT, process.env.INV2_BAUD);
-setSerial("ser_inv3", process.env.INV3_PORT, process.env.INV3_BAUD);
+// Fonction helper : applique /dev/null si disabled
+function applySerial(id, enabled, port, baud) {
+  if ((enabled || "").toLowerCase() === "true") {
+    setSerial(id, port, baud);
+  } else {
+    // port inoffensif, Node-RED ne pourra pas lock un vrai tty
+    setSerial(id, "/dev/null", "2400");
+  }
+}
+
+applySerial("ser_inv1", process.env.INV1_EN, process.env.INV1_PORT, process.env.INV1_BAUD);
+applySerial("ser_inv2", process.env.INV2_EN, process.env.INV2_PORT, process.env.INV2_BAUD);
+applySerial("ser_inv3", process.env.INV3_EN, process.env.INV3_PORT, process.env.INV3_BAUD);
 
 setPoll("inj_inv1");
 setPoll("inj_inv2");
