@@ -52,13 +52,13 @@
     "type": "function",
     "z": "tab_voltronic",
     "name": "Merge QPIGS/QPIGS2 + publish state",
-    "func": "const inv = msg.inv || 'inv';\nconst store = context.get('store') || {};\nstore[inv] = store[inv] || {};\n\n// route by msg.kind\nif (msg.kind === 'QPIGS') {\n  store[inv].qpigs = msg.line;\n}\nif (msg.kind === 'QPIGS2') {\n  // si NAK => ignore\n  if ((msg.line||'').includes('NAK')) store[inv].qpigs2 = null;\n  else store[inv].qpigs2 = msg.line;\n}\ncontext.set('store', store);\n\nconst qpigs = store[inv].qpigs;\nif (!qpigs) return null;\n\nfunction f(x){const v=parseFloat(x);return Number.isFinite(v)?v:null;}\nfunction i(x){const v=parseInt(String(x),10);return Number.isFinite(v)?v:null;}\n\nconst fields = qpigs.split(/\\s+/).filter(Boolean);\nconst payload = { inverter: inv, timestamp: new Date().toISOString() };\n\npayload.grid_v = f(fields[0]);\npayload.grid_hz = f(fields[1]);\npayload.ac_out_v = f(fields[2]);\npayload.ac_out_hz = f(fields[3]);\npayload.apparent_power_va = i(fields[4]);\npayload.active_power_w = i(fields[5]);\npayload.load_pct = i(fields[6]);\npayload.bus_v = i(fields[7]);\npayload.battery_v = f(fields[8]);\npayload.battery_charge_a = i(fields[9]);\npayload.battery_capacity_pct = i(fields[10]);\npayload.heatsink_c = i(fields[11]);\npayload.pv_input_a = i(fields[12]);\npayload.pv_input_v = f(fields[13]);\nif (typeof payload.pv_input_v==='number' && typeof payload.pv_input_a==='number') payload.pv_w_est = Math.round(payload.pv_input_v*payload.pv_input_a*10)/10;\n\n// QPIGS2 (PV2)\nconst qpigs2 = store[inv].qpigs2;\nif (qpigs2) {\n  const f2 = qpigs2.split(/\\s+/).filter(Boolean);\n  payload.pv2_input_a = f(f2[0]);\n  payload.pv2_input_v = f(f2[1]);\n  const p2 = f(f2[2]);\n  payload.pv2_w = Number.isFinite(p2)?p2:null;\n  if (payload.pv2_w==null && typeof payload.pv2_input_v==='number' && typeof payload.pv2_input_a==='number') payload.pv2_w_est = Math.round(payload.pv2_input_v*payload.pv2_input_a*10)/10;\n}\n\nconst pv1 = payload.pv_w_est;\nconst pv2 = payload.pv2_w ?? payload.pv2_w_est;\nif (typeof pv1==='number' || typeof pv2==='number') payload.pv_total_w = Math.round(((pv1||0)+(pv2||0))*10)/10;\n\nmsg.topic = '__PREFIX__/' + inv + '/state';\nmsg.payload = JSON.stringify(payload);\nreturn msg;\n",
+    "func": "const inv = msg.inv || 'inv';\nconst store = context.get('store') || {};\nstore[inv] = store[inv] || {};\n\nif (msg.kind === 'QPIGS') {\n  store[inv].qpigs = msg.line;\n}\nif (msg.kind === 'QPIGS2') {\n  if ((msg.line||'').includes('NAK')) store[inv].qpigs2 = null;\n  else store[inv].qpigs2 = msg.line;\n}\ncontext.set('store', store);\n\nconst qpigs = store[inv].qpigs;\nif (!qpigs) return null;\n\nfunction f(x){const v=parseFloat(x);return Number.isFinite(v)?v:null;}\nfunction i(x){const v=parseInt(String(x),10);return Number.isFinite(v)?v:null;}\n\nconst fields = qpigs.split(/\\s+/).filter(Boolean);\nconst payload = { inverter: inv, timestamp: new Date().toISOString() };\n\npayload.grid_v = f(fields[0]);\npayload.grid_hz = f(fields[1]);\npayload.ac_out_v = f(fields[2]);\npayload.ac_out_hz = f(fields[3]);\npayload.apparent_power_va = i(fields[4]);\npayload.active_power_w = i(fields[5]);\npayload.load_pct = i(fields[6]);\npayload.bus_v = i(fields[7]);\npayload.battery_v = f(fields[8]);\npayload.battery_charge_a = i(fields[9]);\npayload.battery_capacity_pct = i(fields[10]);\npayload.heatsink_c = i(fields[11]);\npayload.pv_input_a = i(fields[12]);\npayload.pv_input_v = f(fields[13]);\nif (typeof payload.pv_input_v==='number' && typeof payload.pv_input_a==='number') payload.pv_w_est = Math.round(payload.pv_input_v*payload.pv_input_a*10)/10;\n\nconst qpigs2 = store[inv].qpigs2;\nif (qpigs2) {\n  const f2 = qpigs2.split(/\\s+/).filter(Boolean);\n  payload.pv2_input_a = f(f2[0]);\n  payload.pv2_input_v = f(f2[1]);\n  const p2 = f(f2[2]);\n  payload.pv2_w = Number.isFinite(p2)?p2:null;\n  if (payload.pv2_w==null && typeof payload.pv2_input_v==='number' && typeof payload.pv2_input_a==='number') payload.pv2_w_est = Math.round(payload.pv2_input_v*payload.pv2_input_a*10)/10;\n}\n\nconst pv1 = payload.pv_w_est;\nconst pv2 = payload.pv2_w ?? payload.pv2_w_est;\nif (typeof pv1==='number' || typeof pv2==='number') payload.pv_total_w = Math.round(((pv1||0)+(pv2||0))*10)/10;\n\nmsg.topic = '__PREFIX__/' + inv + '/state';\nmsg.payload = JSON.stringify(payload);\nreturn msg;\n",
     "outputs": 1,
     "noerr": 0,
     "initialize": "context.set('store', {});\n",
     "finalize": "",
     "libs": [],
-    "x": 510,
+    "x": 520,
     "y": 360,
     "wires": [["mqtt_out_state"]]
   },
@@ -72,7 +72,7 @@
     "qos": "",
     "retain": "",
     "broker": "mqtt_broker_voltronic",
-    "x": 740,
+    "x": 760,
     "y": 360,
     "wires": []
   },
@@ -88,43 +88,33 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 520,
+    "x": 540,
     "y": 420,
     "wires": [["mqtt_out_state"]]
   },
 
-  // ===== INV1 =====
   { "id": "inj_inv1", "type": "inject", "z": "tab_voltronic", "name": "inv1 poll", "props": [{"p":"payload"},{"p":"topic","vt":"str"}], "repeat": "__POLL_S__", "once": true, "onceDelay": 2, "topic": "", "payload": "", "payloadType": "date", "x": 120, "y": 220, "wires": [["sw_inv1_enabled"]] },
-
-  { "id": "sw_inv1_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv1 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 320, "y": 220, "wires": [["ch_inv1_qpigs","ch_inv1_qpigs2"]] },
-
+  { "id": "sw_inv1_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv1 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 330, "y": 220, "wires": [["ch_inv1_qpigs","ch_inv1_qpigs2"]] },
   { "id": "ch_inv1_qpigs", "type": "change", "z": "tab_voltronic", "name": "QPIGS inv1", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv1","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV1_EN__","tot":"bool"}], "x": 160, "y": 280, "wires": [["fn_crc_frame","sr_inv1"]] },
-
   { "id": "ch_inv1_qpigs2", "type": "change", "z": "tab_voltronic", "name": "QPIGS2 inv1", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv1","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV1_EN__","tot":"bool"}], "x": 170, "y": 320, "wires": [["fn_crc_frame","sr_inv1"]] },
+  { "id": "sr_inv1", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv1", "serial": "ser_inv1", "x": 470, "y": 300, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
+  { "id": "ser_inv1", "type": "serial-port", "serialport": "__INV1_PORT__", "serialbaud": "__INV1_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" },
 
-  {
-    "id": "sr_inv1",
-    "type": "serial request",
-    "z": "tab_voltronic",
-    "name": "Serial request inv1",
-    "serial": "ser_inv1",
-    "x": 470,
-    "y": 300,
-    "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]]
-  },
+  { "id": "inj_inv2", "type": "inject", "z": "tab_voltronic", "name": "inv2 poll", "props": [{"p":"payload"},{"p":"topic","vt":"str"}], "repeat": "__POLL_S__", "once": true, "onceDelay": 3, "topic": "", "payload": "", "payloadType": "date", "x": 120, "y": 520, "wires": [["sw_inv2_enabled"]] },
+  { "id": "sw_inv2_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv2 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 330, "y": 520, "wires": [["ch_inv2_qpigs","ch_inv2_qpigs2"]] },
+  { "id": "ch_inv2_qpigs", "type": "change", "z": "tab_voltronic", "name": "QPIGS inv2", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv2","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV2_EN__","tot":"bool"}], "x": 160, "y": 580, "wires": [["fn_crc_frame","sr_inv2"]] },
+  { "id": "ch_inv2_qpigs2", "type": "change", "z": "tab_voltronic", "name": "QPIGS2 inv2", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv2","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV2_EN__","tot":"bool"}], "x": 170, "y": 620, "wires": [["fn_crc_frame","sr_inv2"]] },
+  { "id": "sr_inv2", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv2", "serial": "ser_inv2", "x": 470, "y": 600, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
+  { "id": "ser_inv2", "type": "serial-port", "serialport": "__INV2_PORT__", "serialbaud": "__INV2_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" },
 
-  {
-    "id": "ser_inv1",
-    "type": "serial-port",
-    "serialport": "__INV1_PORT__",
-    "serialbaud": "__INV1_BAUD__",
-    "databits": "8",
-    "parity": "none",
-    "stopbits": "1",
-    "newline": "\\r",
-    "bin": "bin",
-    "out": "bin",
-    "addchar": false,
+  { "id": "inj_inv3", "type": "inject", "z": "tab_voltronic", "name": "inv3 poll", "props": [{"p":"payload"},{"p":"topic","vt":"str"}], "repeat": "__POLL_S__", "once": true, "onceDelay": 4, "topic": "", "payload": "", "payloadType": "date", "x": 120, "y": 820, "wires": [["sw_inv3_enabled"]] },
+  { "id": "sw_inv3_enabled", "type": "switch", "z": "tab_voltronic", "name": "inv3 enabled?", "property": "enabled", "propertyType": "msg", "rules": [{"t":"true"}], "checkall": "true", "repair": false, "outputs": 1, "x": 330, "y": 820, "wires": [["ch_inv3_qpigs","ch_inv3_qpigs2"]] },
+  { "id": "ch_inv3_qpigs", "type": "change", "z": "tab_voltronic", "name": "QPIGS inv3", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv3","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV3_EN__","tot":"bool"}], "x": 160, "y": 880, "wires": [["fn_crc_frame","sr_inv3"]] },
+  { "id": "ch_inv3_qpigs2", "type": "change", "z": "tab_voltronic", "name": "QPIGS2 inv3", "rules": [{"t":"set","p":"cmd","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"kind","pt":"msg","to":"QPIGS2","tot":"str"},{"t":"set","p":"inv","pt":"msg","to":"inv3","tot":"str"},{"t":"set","p":"enabled","pt":"msg","to":"__INV3_EN__","tot":"bool"}], "x": 170, "y": 920, "wires": [["fn_crc_frame","sr_inv3"]] },
+  { "id": "sr_inv3", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv3", "serial": "ser_inv3", "x": 470, "y": 900, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
+  { "id": "ser_inv3", "type": "serial-port", "serialport": "__INV3_PORT__", "serialbaud": "__INV3_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" }
+]
+
     "responsetimeout": "1000"
   }
 ]
