@@ -7,6 +7,7 @@ COPY rootfs /
 # Copie du service Voltronic (Node.js)
 COPY voltronic /opt/voltronic
 
-# Dépendances Node
-RUN cd /opt/voltronic && npm ci --omit=dev   && chmod +x /etc/cont-init.d/00-voltronic-init   && chmod +x /etc/services.d/voltronic/run
-
+# Dépendances Node (pas de package-lock => npm install)
+RUN cd /opt/voltronic && npm install --omit=dev \
+  && chmod +x /etc/cont-init.d/00-voltronic-init \
+  && chmod +x /etc/services.d/voltronic/run
