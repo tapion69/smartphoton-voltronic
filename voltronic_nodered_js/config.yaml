@@ -1,9 +1,9 @@
-name: Voltronic + Node-RED (JS, Plug&Play)
+name: Voltronic + Node-RED (Serial, Plug&Play)
 version: "0.4.0"
-slug: voltronic_nodered_js
+slug: voltronic_nodered_serial
 description: >
-  Node-RED intégré + lecture onduleur Voltronic (série) en JavaScript
-  et publication MQTT automatique vers Home Assistant (Discovery).
+  Node-RED intégré. Lecture Voltronic via ports série directement dans Node-RED
+  (QPIGS + QPIGS2) et publication MQTT + MQTT Discovery Home Assistant.
 
 arch:
   - amd64
@@ -20,15 +20,11 @@ ingress: true
 ingress_port: 1880
 panel_icon: mdi:solar-power
 
+# Optionnel: accès direct IP:1880 (dev)
 ports:
   1880/tcp: 1880
 ports_description:
   1880/tcp: Node-RED (éditeur)
-
-map:
-  - config:rw
-  - addons:rw
-  - share:rw
 
 uart: true
 usb: true
@@ -80,4 +76,3 @@ devices:
   - /dev/ttyUSB0
   - /dev/ttyUSB1
   - /dev/ttyUSB2
-
