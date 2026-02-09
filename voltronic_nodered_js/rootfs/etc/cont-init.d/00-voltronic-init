@@ -10,13 +10,7 @@ mkdir -p "$DATA_DIR"
 
 RESET="$(bashio::config 'reset_flows')"
 
-if [ "$RESET" = "true" ] || [ ! -f "$FLOW" ]; then
-  echo "[voltronic] Seeding default flow from template..."
-  cp -f "$TEMPLATE" "$FLOW"
-else
-  echo "[voltronic] Keeping existing flow (patching only config nodes)."
-fi
-
+# Lire config add-on
 MQTT_HOST="$(bashio::config 'mqtt_host')"
 MQTT_PORT="$(bashio::config 'mqtt_port')"
 MQTT_USER="$(bashio::config 'mqtt_username')"
@@ -36,6 +30,7 @@ INV3_PORT="$(bashio::config 'inverters[2].port')"
 INV3_BAUD="$(bashio::config 'inverters[2].baudrate')"
 INV3_EN="$(bashio::config 'inverters[2].enabled')"
 
+# Defaults
 [ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
 [ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
 [ -z "$MQTT_PREFIX" ] && MQTT_PREFIX="voltronic"
@@ -47,6 +42,7 @@ echo "[voltronic] inv2: ${INV2_PORT} baud=${INV2_BAUD} enabled=${INV2_EN}"
 echo "[voltronic] inv3: ${INV3_PORT} baud=${INV3_BAUD} enabled=${INV3_EN}"
 echo "[voltronic] poll_interval_s=${POLL_S}"
 
+# Écrire les credentials (optionnel, mais OK)
 if [ -n "$MQTT_USER" ] || [ -n "$MQTT_PASS" ]; then
   cat > "$CREDS_FILE" <<EOF
 {
@@ -57,16 +53,56 @@ else
   echo "{}" > "$CREDS_FILE"
 fi
 
+# Seed si absent ou reset
+if [ "$RESET" = "true" ] || [ ! -f "$FLOW" ]; then
+  echo "[voltronic] Seeding default flow from template..."
+  cp -f "$TEMPLATE" "$FLOW"
+else
+  echo "[voltronic] Keeping existing flow (patching only config nodes)."
+fi
+
 export MQTT_HOST MQTT_PORT MQTT_PREFIX POLL_S
 export INV1_PORT INV1_BAUD INV1_EN
 export INV2_PORT INV2_BAUD INV2_EN
 export INV3_PORT INV3_BAUD INV3_EN
 
+# Patch robuste : si JSON invalide => reseed template et continue (ne crash plus)
 node <<'NODE'
 const fs = require("fs");
 
 const flowPath = "/data/node-red/flows-voltronic.json";
-const flow = JSON.parse(fs.readFileSync(flowPath, "utf8"));
+const templatePath = "/etc/node-red/flows-template.json";
+
+function readJsonSafe(path) {
+  const raw = fs.readFileSync(path, "utf8");
+  try {
+    return { ok: true, json: JSON.parse(raw), raw };
+  } catch (e) {
+    return { ok: false, err: e, raw };
+  }
+}
+
+let flowRead = readJsonSafe(flowPath);
+if (!flowRead.ok) {
+  console.error("[voltronic] ERROR: flows-voltronic.json is not valid JSON.");
+  console.error("[voltronic] Reason:", String(flowRead.err));
+  console.error("[voltronic] Reseeding from template...");
+
+  const tpl = readJsonSafe(templatePath);
+  if (!tpl.ok) {
+    console.error("[voltronic] FATAL: flows-template.json is also invalid JSON!");
+    console.error("[voltronic] Reason:", String(tpl.err));
+    process.exit(1);
+  }
+  fs.writeFileSync(flowPath, JSON.stringify(tpl.json, null, 2));
+  flowRead = { ok: true, json: tpl.json };
+}
+
+const flow = flowRead.json;
+if (!Array.isArray(flow)) {
+  console.error("[voltronic] FATAL: flow root is not an array.");
+  process.exit(1);
+}
 
 function byId(id){ return flow.find(n => n && n.id === id); }
 
@@ -79,8 +115,8 @@ function setMqtt(){
 
 function setSerial(id, port, baud){
   const n = byId(id);
-  if (!n || !port) return;
-  n.serialport = String(port);
+  if (!n) return;
+  if (port) n.serialport = String(port);
   if (baud) n.serialbaud = String(baud);
   n.databits = n.databits || "8";
   n.parity = n.parity || "none";
@@ -108,7 +144,7 @@ function setEnabled(changeNodeId, enabledStr){
 
 function setPrefixFn(){
   const n = byId("fn_prefix_replace");
-  if (!n || typeof n.func !== "string") return;
+  if (!n) return;
   const prefix = (process.env.MQTT_PREFIX || "voltronic").replace(/\/+$/,"");
   n.func = "msg.topic = (msg.topic||'').replace('__PREFIX__','" + prefix + "');\nreturn msg;";
 }
