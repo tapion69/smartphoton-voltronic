@@ -1,5 +1,5 @@
 name: "Voltronic + Node-RED (JS, Plug&Play)"
-version: "0.3.1"
+version: "0.3.2"
 slug: "voltronic_nodered_js"
 description: "Node-RED intégré + Voltronic (série) → MQTT, en JavaScript"
 url: "https://github.com/TONUSER/TONREPO"
