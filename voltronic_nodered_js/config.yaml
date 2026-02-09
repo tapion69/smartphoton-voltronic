@@ -1,5 +1,5 @@
 name: "Voltronic + Node-RED (JS, Plug&Play)"
-version: "0.3.6"
+version: "0.3.7"
 slug: "voltronic_nodered_js"
 description: "Node-RED intégré + Voltronic (série) → MQTT, en JavaScript"
 url: "https://github.com/tapion69/smartphoton-voltronic"
