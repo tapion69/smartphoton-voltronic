@@ -20,8 +20,10 @@ ingress: true
 ingress_port: 1880
 panel_icon: mdi:solar-power
 
-ports: {}
-ports_description: {}
+ports:
+  1880/tcp: 1880
+ports_description:
+  1880/tcp: Node-RED (éditeur)
 
 map:
   - config:rw
