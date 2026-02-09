@@ -1,0 +1,10 @@
+#!/usr/bin/with-contenv bash
+set -e
+
+mkdir -p /data/node-red
+
+# Installe le flow par défaut seulement si l'utilisateur n'a pas déjà un flow
+if [ ! -f /data/node-red/flows.json ]; then
+  echo "[voltronic] Installing default Node-RED flows..."
+  cp -f /etc/node-red/flows.json /data/node-red/flows.json
+fi

@@ -1,0 +1,3 @@
+configuration:
+  mqtt_host:
+    name: "MQTT host"
