@@ -1,29 +1,26 @@
 #!/usr/bin/with-contenv bash
 set -e
 
-CONFIG="/data/options.json"
 FLOW_DIR="/data/node-red"
-FLOW_TEMPLATE="/etc/node-red/flows-template.json"
+TEMPLATE="/etc/node-red/flows-template.json"
 FLOW_OUT="${FLOW_DIR}/flows-voltronic.json"
 CRED_OUT="${FLOW_DIR}/flows-voltronic_cred.json"
 
-echo "[voltronic] Installing default Node-RED flows..."
-
 mkdir -p "${FLOW_DIR}"
 
-# Lire config HA
-MQTT_HOST=$(jq -r '.mqtt_host' "$CONFIG")
-MQTT_PORT=$(jq -r '.mqtt_port' "$CONFIG")
-MQTT_USER=$(jq -r '.mqtt_username // empty' "$CONFIG")
-MQTT_PASS=$(jq -r '.mqtt_password // empty' "$CONFIG")
+MQTT_HOST="$(node -p "require('/data/options.json').mqtt_host || 'core-mosquitto'")"
+MQTT_PORT="$(node -p "String(require('/data/options.json').mqtt_port || 1883)")"
+MQTT_USER="$(node -p "String(require('/data/options.json').mqtt_username || '')")"
+MQTT_PASS="$(node -p "String(require('/data/options.json').mqtt_password || '')")"
 
-# 1️⃣ Générer le flow
-sed \
-  -e "s#__MQTT_HOST__#${MQTT_HOST}#g" \
-  -e "s#__MQTT_PORT__#${MQTT_PORT}#g" \
-  "${FLOW_TEMPLATE}" > "${FLOW_OUT}"
+echo "[voltronic] Generating Node-RED flow with MQTT=${MQTT_HOST}:${MQTT_PORT}"
 
-# 2️⃣ Générer les credentials
+# Génère flows-voltronic.json (host/port)
+cp -f "${TEMPLATE}" "${FLOW_OUT}"
+sed -i "s#__MQTT_HOST__#${MQTT_HOST}#g" "${FLOW_OUT}"
+sed -i "s#__MQTT_PORT__#${MQTT_PORT}#g" "${FLOW_OUT}"
+
+# Génère flows-voltronic_cred.json (user/pass)
 cat > "${CRED_OUT}" <<EOF
 {
   "mqtt_broker_voltronic": {
@@ -33,4 +30,6 @@ cat > "${CRED_OUT}" <<EOF
 }
 EOF
 
-echo "[voltronic] Node-RED flows ready"
+echo "[voltronic] Flow + credentials generated:"
+echo " - ${FLOW_OUT}"
+echo " - ${CRED_OUT}"
