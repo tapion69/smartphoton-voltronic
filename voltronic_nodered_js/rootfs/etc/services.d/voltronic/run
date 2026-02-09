@@ -1,4 +1,10 @@
 #!/usr/bin/with-contenv bash
 set -e
+
 echo "[voltronic] Starting Voltronic JS service..."
-exec node /opt/voltronic/voltronic.js
+
+while true; do
+  node /opt/voltronic/voltronic.js || true
+  echo "[voltronic] voltronic.js exited, restarting in 5s..."
+  sleep 5
+done
