@@ -2,72 +2,108 @@
 set -e
 
 DATA_DIR="/data/node-red"
-FLOWS_FILE="${DATA_DIR}/flows-voltronic.json"
-CREDS_FILE="${DATA_DIR}/flows-voltronic_cred.json"
+FLOW="${DATA_DIR}/flows-voltronic.json"
 TEMPLATE="/etc/node-red/flows-template.json"
 
-mkdir -p "${DATA_DIR}"
+mkdir -p "$DATA_DIR"
 
 RESET="$(bashio::config 'reset_flows')"
 
-MQTT_HOST="$(bashio::config 'mqtt_host')"
-MQTT_PORT="$(bashio::config 'mqtt_port')"
-MQTT_USER="$(bashio::config 'mqtt_username')"
-MQTT_PASS="$(bashio::config 'mqtt_password')"
+# 1) Si pas de flow ou reset => seed depuis template
+if [ "$RESET" = "true" ] || [ ! -f "$FLOW" ]; then
+  echo "[voltronic] Seeding default flow from template..."
+  cp -f "$TEMPLATE" "$FLOW"
+fi
+
+# 2) Patch SAFE du flow (sans écraser les nodes)
+export MQTT_HOST="$(bashio::config 'mqtt_host')"
+export MQTT_PORT="$(bashio::config 'mqtt_port')"
+export MQTT_USER="$(bashio::config 'mqtt_username')"
+export MQTT_PASS="$(bashio::config 'mqtt_password')"
+export POLL_S="$(bashio::config 'poll_interval_s')"
 
 [ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
 [ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
+[ -z "$POLL_S" ] && POLL_S="5"
 
-# Toujours écrire le _cred (car config MQTT peut changer)
-if [ -n "$MQTT_USER" ] || [ -n "$MQTT_PASS" ]; then
-  cat > "$CREDS_FILE" <<EOF
-{
-  "mqtt_broker_voltronic": { "user": "$MQTT_USER", "password": "$MQTT_PASS" }
+export INV1_PORT="$(bashio::config 'inverters[0].port')"
+export INV1_BAUD="$(bashio::config 'inverters[0].baudrate')"
+export INV1_EN="$(bashio::config 'inverters[0].enabled')"
+
+export INV2_PORT="$(bashio::config 'inverters[1].port')"
+export INV2_BAUD="$(bashio::config 'inverters[1].baudrate')"
+export INV2_EN="$(bashio::config 'inverters[1].enabled')"
+
+export INV3_PORT="$(bashio::config 'inverters[2].port')"
+export INV3_BAUD="$(bashio::config 'inverters[2].baudrate')"
+export INV3_EN="$(bashio::config 'inverters[2].enabled')"
+
+node <<'NODE'
+const fs = require("fs");
+
+const flowPath = "/data/node-red/flows-voltronic.json";
+const flow = JSON.parse(fs.readFileSync(flowPath, "utf8"));
+
+function setById(id, updater) {
+  const n = flow.find(x => x && x.id === id);
+  if (!n) return false;
+  updater(n);
+  return true;
 }
-EOF
-else
-  echo "{}" > "$CREDS_FILE"
-fi
 
-# Génère le flow seulement si absent ou reset
-if [ "$RESET" = "true" ] || [ ! -f "$FLOWS_FILE" ]; then
-  echo "[voltronic] Writing default Node-RED flow template..."
-  cp -f "$TEMPLATE" "$FLOWS_FILE"
+// Patch MQTT broker config-node
+setById("mqtt_broker_voltronic", (n) => {
+  n.broker = process.env.MQTT_HOST || "core-mosquitto";
+  n.port = String(process.env.MQTT_PORT || "1883");
+  // laisse user/pass au cred file Node-RED si tu veux,
+  // ou via mqtt-broker props selon version.
+});
 
-  # injecte MQTT host/port + options onduleurs
-  sed -i "s#__MQTT_HOST__#${MQTT_HOST}#g" "$FLOWS_FILE"
-  sed -i "s#__MQTT_PORT__#${MQTT_PORT}#g" "$FLOWS_FILE"
+// Patch serial config-nodes
+function patchSerial(id, port, baud) {
+  return setById(id, (n) => {
+    n.serialport = port || n.serialport;
+    n.serialbaud = String(baud || n.serialbaud || "2400");
+    n.databits = n.databits || "8";
+    n.parity = n.parity || "none";
+    n.stopbits = n.stopbits || "1";
+    n.newline = n.newline || "\\r";
+  });
+}
 
-  INV1_PORT="$(bashio::config 'inverters[0].port')"
-  INV1_BAUD="$(bashio::config 'inverters[0].baudrate')"
-  INV1_EN="$(bashio::config 'inverters[0].enabled')"
+patchSerial("ser_inv1", process.env.INV1_PORT, process.env.INV1_BAUD);
+patchSerial("ser_inv2", process.env.INV2_PORT, process.env.INV2_BAUD);
+patchSerial("ser_inv3", process.env.INV3_PORT, process.env.INV3_BAUD);
 
-  INV2_PORT="$(bashio::config 'inverters[1].port')"
-  INV2_BAUD="$(bashio::config 'inverters[1].baudrate')"
-  INV2_EN="$(bashio::config 'inverters[1].enabled')"
+// Patch poll interval inject nodes (optionnel)
+function patchInject(id) {
+  setById(id, (n) => {
+    n.repeat = String(process.env.POLL_S || "5");
+  });
+}
+patchInject("inj_inv1");
+patchInject("inj_inv2");
+patchInject("inj_inv3");
 
-  INV3_PORT="$(bashio::config 'inverters[2].port')"
-  INV3_BAUD="$(bashio::config 'inverters[2].baudrate')"
-  INV3_EN="$(bashio::config 'inverters[2].enabled')"
+// Patch enabled switch via msg.enabled (si tu utilises ce pattern)
+function patchEnabledChangeNode(id, enabled) {
+  // si tu as des Change nodes qui posent msg.enabled
+  setById(id, (n) => {
+    if (!Array.isArray(n.rules)) return;
+    for (const r of n.rules) {
+      if (r && r.t === "set" && r.p === "enabled") {
+        r.to = String(enabled === "true" ? true : enabled);
+        r.tot = "bool";
+      }
+    }
+  });
+}
+// Exemple si ton flow a des change nodes id "ch_inv1_enabled" etc.
+// patchEnabledChangeNode("ch_inv1_enabled", process.env.INV1_EN);
 
-  POLL="$(bashio::config 'poll_interval_s')"
-  [ -z "$POLL" ] && POLL="5"
+fs.writeFileSync(flowPath, JSON.stringify(flow, null, 2));
+console.log("[voltronic] Patched flow config nodes (mqtt/serial/poll).");
+NODE
 
-  sed -i "s#__INV1_PORT__#${INV1_PORT}#g" "$FLOWS_FILE"
-  sed -i "s#__INV1_BAUD__#${INV1_BAUD}#g" "$FLOWS_FILE"
-  sed -i "s#__INV1_EN__#${INV1_EN}#g" "$FLOWS_FILE"
-
-  sed -i "s#__INV2_PORT__#${INV2_PORT}#g" "$FLOWS_FILE"
-  sed -i "s#__INV2_BAUD__#${INV2_BAUD}#g" "$FLOWS_FILE"
-  sed -i "s#__INV2_EN__#${INV2_EN}#g" "$FLOWS_FILE"
-
-  sed -i "s#__INV3_PORT__#${INV3_PORT}#g" "$FLOWS_FILE"
-  sed -i "s#__INV3_BAUD__#${INV3_BAUD}#g" "$FLOWS_FILE"
-  sed -i "s#__INV3_EN__#${INV3_EN}#g" "$FLOWS_FILE"
-
-  sed -i "s#__POLL_S__#${POLL}#g" "$FLOWS_FILE"
-else
-  echo "[voltronic] Keeping existing flows (so your edits stay)."
-fi
-
-chmod 644 "$FLOWS_FILE" "$CREDS_FILE" || true
+chmod 644 "$FLOW" || true
+echo "[voltronic] Flow ready: $FLOW"
