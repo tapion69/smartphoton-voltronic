@@ -1,5 +1,5 @@
 name: Voltronic + Node-RED (Serial, Plug&Play)
-version: "0.4.3"
+version: "0.4.4"
 slug: voltronic_nodered_serial
 description: >
   Node-RED intégré. Lecture Voltronic via ports série directement dans Node-RED
@@ -16,19 +16,17 @@ startup: services
 boot: auto
 init: false
 
-# Ingress (recommandé)
+# Ingress OK, mais on expose aussi le port pour accès direct
 ingress: true
 ingress_port: 1880
 panel_icon: mdi:solar-power
-webui: "[PROTO:ssl]://[HOST]:[PORT:1880]"
+webui: "http://[HOST]:[PORT:1882]"
 
-# IMPORTANT:
-# On remet ports mais en "null" => pas exposé par défaut,
-# mais le système Node-RED/NGINX de l'image ne plante plus.
+# 🔥 Accès direct en local
 ports:
-  1880/tcp: null
+  1880/tcp: 1882
 ports_description:
-  1880/tcp: Node-RED (accès direct optionnel)
+  1880/tcp: Node-RED (accès direct)
 
 uart: true
 usb: true
