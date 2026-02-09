@@ -114,7 +114,3 @@
   { "id": "sr_inv3", "type": "serial request", "z": "tab_voltronic", "name": "Serial request inv3", "serial": "ser_inv3", "x": 470, "y": 900, "wires": [["fn_parse_line","fn_merge_payload","fn_prefix_replace"]] },
   { "id": "ser_inv3", "type": "serial-port", "serialport": "__INV3_PORT__", "serialbaud": "__INV3_BAUD__", "databits": "8", "parity": "none", "stopbits": "1", "newline": "\\r", "bin": "bin", "out": "bin", "addchar": false, "responsetimeout": "1000" }
 ]
-
-    "responsetimeout": "1000"
-  }
-]
