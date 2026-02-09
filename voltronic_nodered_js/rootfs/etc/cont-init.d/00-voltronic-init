@@ -4,8 +4,11 @@ set -e
 DATA_DIR="/data/node-red"
 FLOWS_FILE="${DATA_DIR}/flows-voltronic.json"
 CREDS_FILE="${DATA_DIR}/flows-voltronic_cred.json"
+TEMPLATE="/etc/node-red/flows-template.json"
 
 mkdir -p "${DATA_DIR}"
+
+RESET="$(bashio::config 'reset_flows')"
 
 MQTT_HOST="$(bashio::config 'mqtt_host')"
 MQTT_PORT="$(bashio::config 'mqtt_port')"
@@ -15,182 +18,56 @@ MQTT_PASS="$(bashio::config 'mqtt_password')"
 [ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
 [ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
 
-echo "[voltronic] MQTT → ${MQTT_HOST}:${MQTT_PORT} (user: ${MQTT_USER:-none})"
-echo "[voltronic] Generating Node-RED flow JSON (safe)..."
-
-# Génère le flow via Node.js pour éviter tous problèmes d'échappement
-node <<'NODE'
-const fs = require("fs");
-
-const dataDir = "/data/node-red";
-const flowsFile = dataDir + "/flows-voltronic.json";
-
-const mqttHost = process.env.MQTT_HOST || "core-mosquitto";
-const mqttPort = String(process.env.MQTT_PORT || "1883");
-
-// Code du Function node (multiligne, encodé proprement)
-const funcCode = `
-const data = msg.payload || {};
-const inv = (data.inverter || "inv").toString();
-
-const sensors = [
-  { key: "grid_v",    name: "Grid Voltage",    unit: "V",  dev: "voltage" },
-  { key: "grid_hz",   name: "Grid Frequency",  unit: "Hz", dev: "frequency" },
-  { key: "ac_out_v",  name: "AC Out Voltage",  unit: "V",  dev: "voltage" },
-  { key: "ac_out_hz", name: "AC Out Frequency",unit: "Hz", dev: "frequency" },
-  { key: "active_power_w", name: "Active Power", unit: "W", dev: "power" },
-  { key: "apparent_power_va", name: "Apparent Power", unit: "VA", dev: "" },
-  { key: "load_pct",  name: "Load",            unit: "%",  dev: "" },
-  { key: "battery_v", name: "Battery Voltage", unit: "V",  dev: "voltage" },
-  { key: "battery_charge_a", name: "Battery Charge", unit: "A", dev: "current" },
-  { key: "battery_capacity_pct", name: "Battery Capacity", unit: "%", dev: "" },
-  { key: "pv_input_v", name: "PV Voltage", unit: "V", dev: "voltage" },
-  { key: "pv_input_a", name: "PV Current", unit: "A", dev: "current" },
-  { key: "pv_w_est",   name: "PV Power",   unit: "W", dev: "power" },
-  { key: "heatsink_c", name: "Heatsink Temp", unit: "°C", dev: "temperature" }
-];
-
-const out = [];
-
-for (let i = 0; i < sensors.length; i++) {
-  const s = sensors[i];
-  if (data[s.key] === undefined || data[s.key] === null) continue;
-
-  const base = "homeassistant/sensor/voltronic_" + inv + "_" + s.key;
-
-  const cfg = {
-    name: "Voltronic " + inv + " " + s.name,
-    state_topic: base + "/state",
-    unit_of_measurement: s.unit,
-    unique_id: "voltronic_" + inv + "_" + s.key,
-    device: {
-      identifiers: ["voltronic_" + inv],
-      name: "Voltronic " + inv,
-      manufacturer: "Voltronic",
-      model: "Inverter"
-    }
-  };
-
-  if (s.dev) cfg.device_class = s.dev;
-
-  out.push({ topic: base + "/config", payload: JSON.stringify(cfg), retain: true });
-  out.push({ topic: base + "/state",  payload: String(data[s.key]), retain: false });
-}
-
-return [out];
-`.trim() + "\n";
-
-const flow = [
-  {
-    id: "tab_voltronic",
-    type: "tab",
-    label: "Voltronic",
-    disabled: false,
-    info: "Auto flow (MQTT Discovery Home Assistant)"
-  },
-  {
-    id: "mqtt_broker_voltronic",
-    type: "mqtt-broker",
-    name: "MQTT (auto)",
-    broker: mqttHost,
-    port: mqttPort,
-    clientid: "nodered-voltronic",
-    autoConnect: true,
-    usetls: false,
-    protocolVersion: "4",
-    keepalive: "60",
-    cleansession: true,
-    birthTopic: "",
-    birthQos: "0",
-    birthPayload: "",
-    closeTopic: "",
-    closeQos: "0",
-    closePayload: "",
-    willTopic: "",
-    willQos: "0",
-    willPayload: "",
-    sessionExpiry: ""
-  },
-  {
-    id: "mqtt_in_state",
-    type: "mqtt in",
-    z: "tab_voltronic",
-    name: "voltronic/+/state",
-    topic: "voltronic/+/state",
-    qos: "0",
-    datatype: "auto",
-    broker: "mqtt_broker_voltronic",
-    nl: false,
-    rap: true,
-    rh: 0,
-    inputs: 0,
-    x: 170,
-    y: 120,
-    wires: [["json_parse"]]
-  },
-  {
-    id: "json_parse",
-    type: "json",
-    z: "tab_voltronic",
-    name: "Parse JSON",
-    property: "payload",
-    action: "",
-    pretty: false,
-    x: 360,
-    y: 120,
-    wires: [["ha_discovery_fn"]]
-  },
-  {
-    id: "ha_discovery_fn",
-    type: "function",
-    z: "tab_voltronic",
-    name: "MQTT Discovery + States",
-    func: funcCode,
-    outputs: 1,
-    noerr: 0,
-    initialize: "",
-    finalize: "",
-    libs: [],
-    x: 600,
-    y: 120,
-    wires: [["mqtt_out_any"]]
-  },
-  {
-    id: "mqtt_out_any",
-    type: "mqtt out",
-    z: "tab_voltronic",
-    name: "MQTT OUT",
-    topic: "",
-    qos: "",
-    retain: "",
-    broker: "mqtt_broker_voltronic",
-    x: 820,
-    y: 120,
-    wires: []
-  }
-];
-
-fs.writeFileSync(flowsFile, JSON.stringify(flow, null, 2));
-console.log("[voltronic] Flow written:", flowsFile);
-NODE
-# Passe les variables à Node
-export MQTT_HOST MQTT_PORT
-
-# Credentials: toujours présent (même vide)
+# Toujours écrire le _cred (car config MQTT peut changer)
 if [ -n "$MQTT_USER" ] || [ -n "$MQTT_PASS" ]; then
   cat > "$CREDS_FILE" <<EOF
 {
-  "mqtt_broker_voltronic": {
-    "user": "$MQTT_USER",
-    "password": "$MQTT_PASS"
-  }
+  "mqtt_broker_voltronic": { "user": "$MQTT_USER", "password": "$MQTT_PASS" }
 }
 EOF
 else
   echo "{}" > "$CREDS_FILE"
 fi
 
-chmod 644 "$FLOWS_FILE" "$CREDS_FILE" || true
+# Génère le flow seulement si absent ou reset
+if [ "$RESET" = "true" ] || [ ! -f "$FLOWS_FILE" ]; then
+  echo "[voltronic] Writing default Node-RED flow template..."
+  cp -f "$TEMPLATE" "$FLOWS_FILE"
 
-echo "[voltronic] Listing ${DATA_DIR}:"
-ls -la "${DATA_DIR}" || true
+  # injecte MQTT host/port + options onduleurs
+  sed -i "s#__MQTT_HOST__#${MQTT_HOST}#g" "$FLOWS_FILE"
+  sed -i "s#__MQTT_PORT__#${MQTT_PORT}#g" "$FLOWS_FILE"
+
+  INV1_PORT="$(bashio::config 'inverters[0].port')"
+  INV1_BAUD="$(bashio::config 'inverters[0].baudrate')"
+  INV1_EN="$(bashio::config 'inverters[0].enabled')"
+
+  INV2_PORT="$(bashio::config 'inverters[1].port')"
+  INV2_BAUD="$(bashio::config 'inverters[1].baudrate')"
+  INV2_EN="$(bashio::config 'inverters[1].enabled')"
+
+  INV3_PORT="$(bashio::config 'inverters[2].port')"
+  INV3_BAUD="$(bashio::config 'inverters[2].baudrate')"
+  INV3_EN="$(bashio::config 'inverters[2].enabled')"
+
+  POLL="$(bashio::config 'poll_interval_s')"
+  [ -z "$POLL" ] && POLL="5"
+
+  sed -i "s#__INV1_PORT__#${INV1_PORT}#g" "$FLOWS_FILE"
+  sed -i "s#__INV1_BAUD__#${INV1_BAUD}#g" "$FLOWS_FILE"
+  sed -i "s#__INV1_EN__#${INV1_EN}#g" "$FLOWS_FILE"
+
+  sed -i "s#__INV2_PORT__#${INV2_PORT}#g" "$FLOWS_FILE"
+  sed -i "s#__INV2_BAUD__#${INV2_BAUD}#g" "$FLOWS_FILE"
+  sed -i "s#__INV2_EN__#${INV2_EN}#g" "$FLOWS_FILE"
+
+  sed -i "s#__INV3_PORT__#${INV3_PORT}#g" "$FLOWS_FILE"
+  sed -i "s#__INV3_BAUD__#${INV3_BAUD}#g" "$FLOWS_FILE"
+  sed -i "s#__INV3_EN__#${INV3_EN}#g" "$FLOWS_FILE"
+
+  sed -i "s#__POLL_S__#${POLL}#g" "$FLOWS_FILE"
+else
+  echo "[voltronic] Keeping existing flows (so your edits stay)."
+fi
+
+chmod 644 "$FLOWS_FILE" "$CREDS_FILE" || true
