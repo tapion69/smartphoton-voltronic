@@ -1,40 +1,78 @@
-#!/usr/bin/with-contenv bash
+#!/usr/bin/with-contenv bashio
 set -e
 
-FLOW_DIR="/data/node-red"
-TEMPLATE="/etc/node-red/flows-template.json"
-FLOW_OUT="${FLOW_DIR}/flows-voltronic.json"
-CRED_OUT="${FLOW_DIR}/flows-voltronic_cred.json"
+echo "[voltronic] Installing default Node-RED flows..."
 
-echo "[voltronic] Preparing Node-RED flow/credentials..."
+DATA_DIR="/data/node-red"
+FLOWS_FILE="$DATA_DIR/flows-voltronic.json"
+CREDS_FILE="$DATA_DIR/flows-voltronic_cred.json"
 
-mkdir -p "${FLOW_DIR}"
+mkdir -p "$DATA_DIR"
 
-MQTT_HOST="$(node -p "require('/data/options.json').mqtt_host || 'core-mosquitto'")"
-MQTT_PORT="$(node -p "String(require('/data/options.json').mqtt_port || 1883)")"
-MQTT_USER="$(node -p "String(require('/data/options.json').mqtt_username || '')")"
-MQTT_PASS="$(node -p "String(require('/data/options.json').mqtt_password || '')")"
+# =========================
+# Récupération config add-on
+# =========================
+MQTT_HOST="$(bashio::config 'mqtt_host')"
+MQTT_PORT="$(bashio::config 'mqtt_port')"
+MQTT_USER="$(bashio::config 'mqtt_username')"
+MQTT_PASS="$(bashio::config 'mqtt_password')"
 
-echo "[voltronic] MQTT host=${MQTT_HOST} port=${MQTT_PORT} user=${MQTT_USER:+(set)} pass=${MQTT_PASS:+(set)}"
+# Valeurs par défaut
+[ -z "$MQTT_HOST" ] && MQTT_HOST="core-mosquitto"
+[ -z "$MQTT_PORT" ] && MQTT_PORT="1883"
 
-# Flow (host/port)
-cp -f "${TEMPLATE}" "${FLOW_OUT}"
-sed -i "s#__MQTT_HOST__#${MQTT_HOST}#g" "${FLOW_OUT}"
-sed -i "s#__MQTT_PORT__#${MQTT_PORT}#g" "${FLOW_OUT}"
+echo "[voltronic] MQTT → $MQTT_HOST:$MQTT_PORT (user: ${MQTT_USER:-none})"
 
-# Credentials (user/pass)
-cat > "${CRED_OUT}" <<EOF
+# =========================
+# FLOW PRINCIPAL
+# =========================
+if [ ! -f "$FLOWS_FILE" ]; then
+  cat > "$FLOWS_FILE" <<EOF
+[
+  {
+    "id": "mqtt_broker_voltronic",
+    "type": "mqtt-broker",
+    "name": "MQTT (auto)",
+    "broker": "$MQTT_HOST",
+    "port": "$MQTT_PORT",
+    "clientid": "nodered-voltronic",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "sessionExpiry": ""
+  }
+]
+EOF
+  echo "[voltronic] Created flows-voltronic.json"
+fi
+
+# =========================
+# FICHIER CREDENTIALS MQTT
+# =========================
+cat > "$CREDS_FILE" <<EOF
 {
   "mqtt_broker_voltronic": {
-    "user": "${MQTT_USER}",
-    "password": "${MQTT_PASS}"
+    "user": "$MQTT_USER",
+    "password": "$MQTT_PASS"
   }
 }
 EOF
 
-echo "[voltronic] Wrote:"
-echo " - ${FLOW_OUT}"
-echo " - ${CRED_OUT}"
+echo "[voltronic] Wrote MQTT credentials"
 
-echo "[voltronic] Debug listing:"
-ls -la "${FLOW_DIR}" || true
+# Permissions propres
+chown -R node-red:node-red "$DATA_DIR" || true
+
+echo "[voltronic] Init complete"
+ls -la "$DATA_DIR"
