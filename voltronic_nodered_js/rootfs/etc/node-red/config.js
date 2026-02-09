@@ -1,23 +1,18 @@
 module.exports = {
   uiPort: 1880,
 
-  // Dossiers persistants
   userDir: "/data/node-red",
-  flowFile: "flows.json",
+  flowFile: "flows-voltronic.json",
 
-  // Pas d'auth Node-RED (Ingress/NGINX s'en charge côté HA)
   adminAuth: null,
 
-  // Logs
+  // (optionnel) éviter le warning de credentials
+  credentialSecret: process.env.CREDENTIAL_SECRET || "voltronic-default-change-me",
+
   logging: {
-    console: {
-      level: "info",
-      metrics: false,
-      audit: false,
-    },
+    console: { level: "info", metrics: false, audit: false },
   },
 
-  // Désactive les projets Git dans l’éditeur (plus simple plug&play)
   editorTheme: {
     projects: { enabled: false },
   },
