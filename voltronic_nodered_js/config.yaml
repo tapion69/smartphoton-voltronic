@@ -1,5 +1,5 @@
 name: Voltronic + Node-RED (Serial, Plug&Play)
-version: "0.4.1"
+version: "0.4.3"
 slug: voltronic_nodered_serial
 description: >
   Node-RED intégré. Lecture Voltronic via ports série directement dans Node-RED
@@ -16,15 +16,19 @@ startup: services
 boot: auto
 init: false
 
-ingress: false
+# Ingress (recommandé)
+ingress: true
 ingress_port: 1880
 panel_icon: mdi:solar-power
+webui: "[PROTO:ssl]://[HOST]:[PORT:1880]"
 
-# Accès direct (dev) : http://IP_HA:1880
+# IMPORTANT:
+# On remet ports mais en "null" => pas exposé par défaut,
+# mais le système Node-RED/NGINX de l'image ne plante plus.
 ports:
-  1880/tcp: 1880
+  1880/tcp: null
 ports_description:
-  1880/tcp: Node-RED (éditeur)
+  1880/tcp: Node-RED (accès direct optionnel)
 
 uart: true
 usb: true
@@ -52,7 +56,7 @@ options:
       baudrate: 2400
     - name: inv3
       enabled: false
-      port: /dev/serial/by-id/CHANGE-ME
+      port: ""
       baudrate: 2400
 
 schema:
@@ -63,13 +67,10 @@ schema:
   mqtt_topic_prefix: str
   poll_interval_s: int
   reset_flows: bool
-
   inverters:
     - name: str
       enabled: bool
       port: str
       baudrate: int
 
-# On laisse HA exposer les devices USB/serial automatiquement (usb: true / uart: true)
-# Ne pas figer /dev/ttyUSBx ici pour éviter les problèmes selon le matériel.
 devices: []
