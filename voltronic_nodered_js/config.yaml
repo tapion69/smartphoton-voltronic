@@ -9,12 +9,6 @@ arch:
   - aarch64
   - armv7
 
-build_from:
-  amd64: ghcr.io/home-assistant/amd64-addon-node-red:latest
-  aarch64: ghcr.io/home-assistant/aarch64-addon-node-red:latest
-  armv7: ghcr.io/home-assistant/armv7-addon-node-red:latest
-
-
 startup: services
 boot: auto
 init: false
